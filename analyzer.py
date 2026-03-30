@@ -41,7 +41,11 @@ def near(a, b):
 
 def load_match(match_id):
     path = f"data_d_and_p/match_{match_id}.json"
-    with open(path, "r", encoding="utf-8") as f:
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Match file not found: {path}")
+
+    with open(path, "r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 def frame_time(clock):
