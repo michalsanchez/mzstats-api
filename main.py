@@ -21,7 +21,7 @@ def status():
     return {"step": "ready", "message": "Ready"}
 
 @app.get("/analyze")
-def analyze(match_id: int = 0, team_id: str = None, full_pitch: bool = False):
+def analyze(match_id: int = "0", team_id: str = None, full_pitch: bool = False):
     try:
         images = run_analysis(match_id, team_id=team_id, full_pitch=full_pitch)
         return {
