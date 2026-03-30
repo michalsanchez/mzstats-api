@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from analyzer import run_analysis
 
 app = FastAPI()
 
@@ -20,9 +21,16 @@ def status():
     return {"step": "ready", "message": "Ready"}
 
 @app.get("/analyze")
-def analyze(match_id: int = 0):
-    return {
-        "match_id": match_id,
-        "images": [],
-        "message": "Analyze endpoint funguje"
-    }
+def analyze(match_id: int = 0, team_id: str = None, full_pitch: bool = False):
+    try:
+        images = run_analysis(match_id, team_id=team_id, full_pitch=full_pitch)
+        return {
+            "match_id": match_id,
+            "images": images,
+            "message": "Analyze endpoint funguje"
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "images": []
+        }
