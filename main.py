@@ -14,8 +14,11 @@ app = FastAPI()
 # CORS (dôležité pre frontend)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "https://match.mzstats.app",
+        "https://www.match.mzstats.app"
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
