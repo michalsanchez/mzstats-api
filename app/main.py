@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-print("=== APP/MAIN.PY LOADED ===")
+print("=== APP MAIN LOADED FOR REAL ===")
 
 app = FastAPI()
 
@@ -20,17 +20,11 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {
-        "status": "ok",
-        "version": "APP MAIN WORKS"
-    }
+    return {"status": "ok", "source": "REAL APP MAIN"}
 
 @app.get("/status")
 def status():
-    return {
-        "step": "idle",
-        "message": "APP STATUS OK"
-    }
+    return {"step": "idle", "message": "REAL STATUS WORKS"}
 
 @app.get("/headers-debug")
 def headers_debug(request: Request):
@@ -38,5 +32,4 @@ def headers_debug(request: Request):
         "ok": True,
         "origin": request.headers.get("origin"),
         "host": request.headers.get("host"),
-        "user_agent": request.headers.get("user-agent"),
     }
