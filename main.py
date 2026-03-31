@@ -1,11 +1,12 @@
-print("=== NEW VERSION WITH CORS LOADED ===")
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import os
 import json
+
+print("=== NEW VERSION WITH CORS LOADED ===")
+
 
 from app.services.tactical_engine import run_analysis
 from app.data_pipeline.mz_match_to_json import run_pipeline
