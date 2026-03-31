@@ -1,15 +1,12 @@
 import requests
 import json
 import struct
-import time
 import xml.etree.ElementTree as ET
 import os
 
-from playwright.sync_api import sync_playwright
-
 BASE_URL = "https://www.managerzone.com/"
 
-with open("cookies.json") as f:
+with open("cookies.json", encoding="utf-8") as f:
     cookies = json.load(f)
 
 headers = {
@@ -29,41 +26,7 @@ def update(status_callback, step, message):
 
 
 # =============================
-# 1️⃣ Inicializácia replay
-# =============================
-
-def initialize_replay(match_id, status_callback=None):
-
-    update(status_callback, "init_replay", "⚽ Inicializujem Match Viewer...")
-
-    with sync_playwright() as p:
-
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--single-process",
-                "--no-zygote",
-            ]
-        )
-
-        context = browser.new_context()
-        page = context.new_page()
-
-        url = f"https://www.managerzone.com/?p=match&sub=result&type=2d&play=2d&mid={match_id}"
-
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
-
-        time.sleep(10)
-
-        browser.close()
-
-
-# =============================
-# 2️⃣ Download replay + XML
+# 1️⃣ Download replay + XML
 # =============================
 
 def download_files(match_id, status_callback=None):
@@ -80,7 +43,8 @@ def download_files(match_id, status_callback=None):
         BASE_URL + "matchviewer/getMatchFiles.php",
         params=params,
         cookies=cookies,
-        headers=headers
+        headers=headers,
+        timeout=60
     )
 
     if len(r.content) < 100:
@@ -100,7 +64,8 @@ def download_files(match_id, status_callback=None):
         BASE_URL + "matchviewer/getMatchFiles.php",
         params=params,
         cookies=cookies,
-        headers=headers
+        headers=headers,
+        timeout=60
     )
 
     if len(r.content) < 100:
@@ -112,7 +77,7 @@ def download_files(match_id, status_callback=None):
 
 
 # =============================
-# 3️⃣ Parse XML hráčov
+# 2️⃣ Parse XML hráčov
 # =============================
 
 def parse_players(xml_data, status_callback=None):
@@ -125,7 +90,6 @@ def parse_players(xml_data, status_callback=None):
     teams = {}
 
     for team in root.findall("Team"):
-
         team_id = team.get("id")
 
         teams[team_id] = {
@@ -134,7 +98,6 @@ def parse_players(xml_data, status_callback=None):
         }
 
     for player in root.findall("Player"):
-
         internal_id = int(player.get("internalId"))
 
         players_map[internal_id] = {
@@ -149,7 +112,7 @@ def parse_players(xml_data, status_callback=None):
 
 
 # =============================
-# 4️⃣ Parse replay BIN
+# 3️⃣ Parse replay BIN
 # =============================
 
 def parse_replay(bin_data, players_map, status_callback=None):
@@ -173,7 +136,6 @@ def parse_replay(bin_data, players_map, status_callback=None):
     frames = []
 
     for frame_no in range(total_frames):
-
         frame_offset = offset + frame_no * frame_size
         cursor = frame_offset
 
@@ -191,8 +153,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
 
         players = []
 
-        for i in range(num_actors):
-
+        for _ in range(num_actors):
             internal_id = bin_data[cursor]
             cursor += 1
 
@@ -209,7 +170,6 @@ def parse_replay(bin_data, players_map, status_callback=None):
             cursor += 1
 
             if internal_id != 0:
-
                 info = players_map.get(internal_id, {})
 
                 players.append({
@@ -257,8 +217,6 @@ def run_pipeline(match_id, status_callback=None):
     if os.path.exists(output_path):
         update(status_callback, "exists", "📂 Zápas už existuje, preskakujem sťahovanie...")
         return output_path
-
-    initialize_replay(match_id, status_callback)
 
     replay, xml_data = download_files(match_id, status_callback)
 
