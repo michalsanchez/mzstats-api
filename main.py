@@ -1,12 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
 import json
 
 print("=== NEW VERSION WITH CORS LOADED ===")
-
 
 from app.services.tactical_engine import run_analysis
 from app.data_pipeline.mz_match_to_json import run_pipeline
@@ -14,22 +13,58 @@ from app.services.mz_lookup import resolve_soccer_team, get_team_match_history
 
 app = FastAPI()
 
-# CORS (dôležité pre frontend)
+# ------------------------------------------------
+# CORS
+# ------------------------------------------------
+
+ALLOWED_ORIGINS = [
+    "https://match.mzstats.app",
+    "https://www.match.mzstats.app",
+    "http://localhost:3000",
+    "http://127.0.0.1:5500",
+]
+
+# Standard FastAPI CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://match.mzstats.app",
-        "https://www.match.mzstats.app",
-        "http://localhost:3000",
-        "http://127.0.0.1:5500"
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# static obrázky
+# Hard fallback CORS middleware (spoľahlivý fix pre Render/browser problémy)
+@app.middleware("http")
+async def force_cors_headers(request: Request, call_next):
+    origin = request.headers.get("origin")
+
+    # Preflight request
+    if request.method == "OPTIONS":
+        response = JSONResponse(content={"ok": True})
+    else:
+        response = await call_next(request)
+
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    else:
+        # fallback pre priame otvorenie endpointu v browseri
+        response.headers["Access-Control-Allow-Origin"] = "https://match.mzstats.app"
+
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Vary"] = "Origin"
+
+    return response
+
+# ------------------------------------------------
+# STATIC FILES
+# ------------------------------------------------
+
 app.mount("/reports", StaticFiles(directory="reports"), name="reports")
+
+# ------------------------------------------------
+# GLOBAL STATE
+# ------------------------------------------------
 
 LAST = []
 
@@ -39,7 +74,7 @@ STATUS = {
 }
 
 # ------------------------------------------------
-# STATUS
+# STATUS HELPERS
 # ------------------------------------------------
 
 def set_status(step: str, message: str):
