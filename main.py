@@ -2,10 +2,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import os
 import json
-
-print("=== NEW VERSION WITH CORS LOADED ===")
 
 from app.services.tactical_engine import run_analysis
 from app.data_pipeline.mz_match_to_json import run_pipeline
@@ -13,48 +12,79 @@ from app.services.mz_lookup import resolve_soccer_team, get_team_match_history
 
 app = FastAPI()
 
-# ------------------------------------------------
-# CORS
-# ------------------------------------------------
-
-ALLOWED_ORIGINS = [
+ALLOWED_ORIGINS = {
     "https://match.mzstats.app",
     "https://www.match.mzstats.app",
     "http://localhost:3000",
     "http://127.0.0.1:5500",
-]
+}
 
-# Standard FastAPI CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ------------------------------------------------
+# HELPERS
+# ------------------------------------------------
 
-# Hard fallback CORS middleware (spoľahlivý fix pre Render/browser problémy)
-@app.middleware("http")
-async def force_cors_headers(request: Request, call_next):
-    origin = request.headers.get("origin")
-
-    # Preflight request
-    if request.method == "OPTIONS":
-        response = JSONResponse(content={"ok": True})
-    else:
-        response = await call_next(request)
-
+def apply_cors_headers(response, origin: str = None):
     if origin in ALLOWED_ORIGINS:
         response.headers["Access-Control-Allow-Origin"] = origin
     else:
-        # fallback pre priame otvorenie endpointu v browseri
         response.headers["Access-Control-Allow-Origin"] = "https://match.mzstats.app"
 
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
     response.headers["Vary"] = "Origin"
-
     return response
+
+# ------------------------------------------------
+# STANDARD CORS
+# ------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(ALLOWED_ORIGINS),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ------------------------------------------------
+# FORCE CORS ON EVERY REQUEST
+# ------------------------------------------------
+
+@app.middleware("http")
+async def force_cors_everywhere(request: Request, call_next):
+    origin = request.headers.get("origin")
+
+    # preflight request
+    if request.method == "OPTIONS":
+        response = JSONResponse({"ok": True}, status_code=200)
+        return apply_cors_headers(response, origin)
+
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        response = JSONResponse({"error": str(e)}, status_code=500)
+
+    return apply_cors_headers(response, origin)
+
+# ------------------------------------------------
+# FORCE CORS ON HTTP ERRORS (404, etc.)
+# ------------------------------------------------
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    response = JSONResponse(
+        {"error": exc.detail},
+        status_code=exc.status_code
+    )
+    return apply_cors_headers(response, request.headers.get("origin"))
+
+@app.exception_handler(Exception)
+async def custom_exception_handler(request: Request, exc: Exception):
+    response = JSONResponse(
+        {"error": str(exc)},
+        status_code=500
+    )
+    return apply_cors_headers(response, request.headers.get("origin"))
 
 # ------------------------------------------------
 # STATIC FILES
@@ -117,11 +147,13 @@ def root():
 def get_status():
     return STATUS
 
+# ------------------------------------------------
+# DEBUG
+# ------------------------------------------------
+
 @app.get("/headers-debug")
 def headers_debug():
     return {"ok": True}
-
-
 
 # ------------------------------------------------
 # TEAM LOOKUP
