@@ -16,7 +16,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://match.mzstats.app",
-        "https://www.match.mzstats.app"
+        "https://www.match.mzstats.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:5500"
     ],
     allow_credentials=False,
     allow_methods=["*"],
