@@ -117,6 +117,12 @@ def root():
 def get_status():
     return STATUS
 
+@app.get("/headers-debug")
+def headers_debug():
+    return {"ok": True}
+
+
+
 # ------------------------------------------------
 # TEAM LOOKUP
 # ------------------------------------------------
