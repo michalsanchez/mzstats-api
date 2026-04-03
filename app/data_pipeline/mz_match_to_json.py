@@ -1,6 +1,7 @@
 import requests
 import json
 import struct
+import time
 import xml.etree.ElementTree as ET
 import os
 
@@ -8,7 +9,13 @@ from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://www.managerzone.com/"
 
-with open("cookies.json", encoding="utf-8") as f:
+# =============================
+# COOKIES
+# =============================
+
+COOKIE_PATH = os.path.join(os.getcwd(), "cookies.json")
+
+with open(COOKIE_PATH, "r", encoding="utf-8") as f:
     cookies = json.load(f)
 
 headers = {
@@ -16,6 +23,26 @@ headers = {
     "X-Requested-With": "XMLHttpRequest",
     "Accept-Encoding": "gzip, deflate"
 }
+
+# =============================
+# PLAYWRIGHT PATH FIX
+# =============================
+
+# Natvrdo nastavíme cestu, kam Render pri builde uloží Playwright browser
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
+
+# Ak chceš explicitne ukázať chromium executable, necháme helper:
+def get_chromium_executable():
+    possible_paths = [
+        "/opt/render/.cache/ms-playwright/chromium-1208/chrome-linux/chrome",
+        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell",
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+
+    return None
 
 
 # =============================
@@ -28,16 +55,23 @@ def update(status_callback, step, message):
 
 
 # =============================
-# 1️⃣ Inicializácia replay viewer
+# 1️⃣ Inicializácia replay
 # =============================
 
 def initialize_replay(match_id, status_callback=None):
-
     update(status_callback, "init_replay", "⚽ Inicializujem Match Viewer...")
 
-    with sync_playwright() as p:
+    chromium_path = get_chromium_executable()
 
+    if not chromium_path:
+        raise Exception(
+            "Playwright Chromium executable sa nenašiel. "
+            "Skontroluj Build Command na Renderi: playwright install chromium"
+        )
+
+    with sync_playwright() as p:
         browser = p.chromium.launch(
+            executable_path=chromium_path,
             headless=True,
             args=[
                 "--no-sandbox",
@@ -46,28 +80,18 @@ def initialize_replay(match_id, status_callback=None):
                 "--disable-gpu",
                 "--single-process",
                 "--no-zygote",
-                "--disable-extensions",
-                "--disable-background-networking",
-                "--disable-sync",
-                "--disable-translate",
-                "--disable-software-rasterizer"
             ]
         )
 
         context = browser.new_context()
         page = context.new_page()
 
-        # Blokovanie zbytočných assetov kvôli RAM
-        page.route("**/*", lambda route: (
-            route.abort() if route.request.resource_type in ["image", "stylesheet", "font"] else route.continue_()
-        ))
-
         url = f"https://www.managerzone.com/?p=match&sub=result&type=2d&play=2d&mid={match_id}"
 
         page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-        # krátky trigger na inicializáciu vieweru
-        page.wait_for_timeout(3000)
+        # necháme viewer chvíľu inicializovať server-side dáta
+        time.sleep(8)
 
         browser.close()
 
@@ -77,7 +101,6 @@ def initialize_replay(match_id, status_callback=None):
 # =============================
 
 def download_files(match_id, status_callback=None):
-
     update(status_callback, "download_replay", "📥 Sťahujem replay zápasu...")
 
     params = {
@@ -128,7 +151,6 @@ def download_files(match_id, status_callback=None):
 # =============================
 
 def parse_players(xml_data, status_callback=None):
-
     update(status_callback, "parse_players", "👥 Načítavam tímy a hráčov...")
 
     root = ET.fromstring(xml_data)
@@ -163,7 +185,6 @@ def parse_players(xml_data, status_callback=None):
 # =============================
 
 def parse_replay(bin_data, players_map, status_callback=None):
-
     update(status_callback, "parse_replay", "🧩 Parsujem replay dáta...")
 
     offset = 0
@@ -183,7 +204,6 @@ def parse_replay(bin_data, players_map, status_callback=None):
     frames = []
 
     for frame_no in range(total_frames):
-
         frame_offset = offset + frame_no * frame_size
         cursor = frame_offset
 
@@ -201,8 +221,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
 
         players = []
 
-        for _ in range(num_actors):
-
+        for i in range(num_actors):
             internal_id = bin_data[cursor]
             cursor += 1
 
@@ -219,7 +238,6 @@ def parse_replay(bin_data, players_map, status_callback=None):
             cursor += 1
 
             if internal_id != 0:
-
                 info = players_map.get(internal_id, {})
 
                 players.append({
@@ -259,12 +277,10 @@ def parse_replay(bin_data, players_map, status_callback=None):
 # =============================
 
 def run_pipeline(match_id, status_callback=None):
-
     os.makedirs("data_d_and_p", exist_ok=True)
 
     output_path = f"data_d_and_p/match_{match_id}.json"
 
-    # Cache – ak už zápas existuje, netreba znovu inicializovať viewer
     if os.path.exists(output_path):
         update(status_callback, "exists", "📂 Zápas už existuje, preskakujem sťahovanie...")
         return output_path
