@@ -9,13 +9,7 @@ from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://www.managerzone.com/"
 
-# =============================
-# COOKIES
-# =============================
-
-COOKIE_PATH = os.path.join(os.getcwd(), "cookies.json")
-
-with open(COOKIE_PATH, "r", encoding="utf-8") as f:
+with open("cookies.json") as f:
     cookies = json.load(f)
 
 headers = {
@@ -23,26 +17,6 @@ headers = {
     "X-Requested-With": "XMLHttpRequest",
     "Accept-Encoding": "gzip, deflate"
 }
-
-# =============================
-# PLAYWRIGHT PATH FIX
-# =============================
-
-# Natvrdo nastavíme cestu, kam Render pri builde uloží Playwright browser
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
-
-# Ak chceš explicitne ukázať chromium executable, necháme helper:
-def get_chromium_executable():
-    possible_paths = [
-        "/opt/render/.cache/ms-playwright/chromium-1208/chrome-linux/chrome",
-        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell",
-    ]
-
-    for path in possible_paths:
-        if os.path.exists(path):
-            return path
-
-    return None
 
 
 # =============================
@@ -59,19 +33,12 @@ def update(status_callback, step, message):
 # =============================
 
 def initialize_replay(match_id, status_callback=None):
+
     update(status_callback, "init_replay", "⚽ Inicializujem Match Viewer...")
 
-    chromium_path = get_chromium_executable()
-
-    if not chromium_path:
-        raise Exception(
-            "Playwright Chromium executable sa nenašiel. "
-            "Skontroluj Build Command na Renderi: playwright install chromium"
-        )
-
     with sync_playwright() as p:
+
         browser = p.chromium.launch(
-            executable_path=chromium_path,
             headless=True,
             args=[
                 "--no-sandbox",
@@ -90,8 +57,7 @@ def initialize_replay(match_id, status_callback=None):
 
         page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-        # necháme viewer chvíľu inicializovať server-side dáta
-        time.sleep(8)
+        time.sleep(10)
 
         browser.close()
 
@@ -101,6 +67,7 @@ def initialize_replay(match_id, status_callback=None):
 # =============================
 
 def download_files(match_id, status_callback=None):
+
     update(status_callback, "download_replay", "📥 Sťahujem replay zápasu...")
 
     params = {
@@ -113,8 +80,7 @@ def download_files(match_id, status_callback=None):
         BASE_URL + "matchviewer/getMatchFiles.php",
         params=params,
         cookies=cookies,
-        headers=headers,
-        timeout=60
+        headers=headers
     )
 
     if len(r.content) < 100:
@@ -134,8 +100,7 @@ def download_files(match_id, status_callback=None):
         BASE_URL + "matchviewer/getMatchFiles.php",
         params=params,
         cookies=cookies,
-        headers=headers,
-        timeout=60
+        headers=headers
     )
 
     if len(r.content) < 100:
@@ -151,6 +116,7 @@ def download_files(match_id, status_callback=None):
 # =============================
 
 def parse_players(xml_data, status_callback=None):
+
     update(status_callback, "parse_players", "👥 Načítavam tímy a hráčov...")
 
     root = ET.fromstring(xml_data)
@@ -159,6 +125,7 @@ def parse_players(xml_data, status_callback=None):
     teams = {}
 
     for team in root.findall("Team"):
+
         team_id = team.get("id")
 
         teams[team_id] = {
@@ -167,6 +134,7 @@ def parse_players(xml_data, status_callback=None):
         }
 
     for player in root.findall("Player"):
+
         internal_id = int(player.get("internalId"))
 
         players_map[internal_id] = {
@@ -185,6 +153,7 @@ def parse_players(xml_data, status_callback=None):
 # =============================
 
 def parse_replay(bin_data, players_map, status_callback=None):
+
     update(status_callback, "parse_replay", "🧩 Parsujem replay dáta...")
 
     offset = 0
@@ -204,6 +173,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
     frames = []
 
     for frame_no in range(total_frames):
+
         frame_offset = offset + frame_no * frame_size
         cursor = frame_offset
 
@@ -222,6 +192,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
         players = []
 
         for i in range(num_actors):
+
             internal_id = bin_data[cursor]
             cursor += 1
 
@@ -238,6 +209,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
             cursor += 1
 
             if internal_id != 0:
+
                 info = players_map.get(internal_id, {})
 
                 players.append({
@@ -277,6 +249,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
 # =============================
 
 def run_pipeline(match_id, status_callback=None):
+
     os.makedirs("data_d_and_p", exist_ok=True)
 
     output_path = f"data_d_and_p/match_{match_id}.json"
