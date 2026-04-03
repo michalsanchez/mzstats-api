@@ -4,6 +4,8 @@ import struct
 import xml.etree.ElementTree as ET
 import os
 
+from playwright.sync_api import sync_playwright
+
 BASE_URL = "https://www.managerzone.com/"
 
 with open("cookies.json", encoding="utf-8") as f:
@@ -26,7 +28,52 @@ def update(status_callback, step, message):
 
 
 # =============================
-# 1️⃣ Download replay + XML
+# 1️⃣ Inicializácia replay viewer
+# =============================
+
+def initialize_replay(match_id, status_callback=None):
+
+    update(status_callback, "init_replay", "⚽ Inicializujem Match Viewer...")
+
+    with sync_playwright() as p:
+
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--single-process",
+                "--no-zygote",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-translate",
+                "--disable-software-rasterizer"
+            ]
+        )
+
+        context = browser.new_context()
+        page = context.new_page()
+
+        # Blokovanie zbytočných assetov kvôli RAM
+        page.route("**/*", lambda route: (
+            route.abort() if route.request.resource_type in ["image", "stylesheet", "font"] else route.continue_()
+        ))
+
+        url = f"https://www.managerzone.com/?p=match&sub=result&type=2d&play=2d&mid={match_id}"
+
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+        # krátky trigger na inicializáciu vieweru
+        page.wait_for_timeout(3000)
+
+        browser.close()
+
+
+# =============================
+# 2️⃣ Download replay + XML
 # =============================
 
 def download_files(match_id, status_callback=None):
@@ -77,7 +124,7 @@ def download_files(match_id, status_callback=None):
 
 
 # =============================
-# 2️⃣ Parse XML hráčov
+# 3️⃣ Parse XML hráčov
 # =============================
 
 def parse_players(xml_data, status_callback=None):
@@ -112,7 +159,7 @@ def parse_players(xml_data, status_callback=None):
 
 
 # =============================
-# 3️⃣ Parse replay BIN
+# 4️⃣ Parse replay BIN
 # =============================
 
 def parse_replay(bin_data, players_map, status_callback=None):
@@ -136,6 +183,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
     frames = []
 
     for frame_no in range(total_frames):
+
         frame_offset = offset + frame_no * frame_size
         cursor = frame_offset
 
@@ -154,6 +202,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
         players = []
 
         for _ in range(num_actors):
+
             internal_id = bin_data[cursor]
             cursor += 1
 
@@ -170,6 +219,7 @@ def parse_replay(bin_data, players_map, status_callback=None):
             cursor += 1
 
             if internal_id != 0:
+
                 info = players_map.get(internal_id, {})
 
                 players.append({
@@ -214,9 +264,12 @@ def run_pipeline(match_id, status_callback=None):
 
     output_path = f"data_d_and_p/match_{match_id}.json"
 
+    # Cache – ak už zápas existuje, netreba znovu inicializovať viewer
     if os.path.exists(output_path):
         update(status_callback, "exists", "📂 Zápas už existuje, preskakujem sťahovanie...")
         return output_path
+
+    initialize_replay(match_id, status_callback)
 
     replay, xml_data = download_files(match_id, status_callback)
 
