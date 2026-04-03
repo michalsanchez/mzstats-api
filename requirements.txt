@@ -1,7 +1,4 @@
 fastapi
 uvicorn
-numpy
-scikit-learn
 requests
-scipy
-python-multipart
+playwright
