@@ -44,10 +44,10 @@ def home():
     return RedirectResponse(url="/analyzer")
 
 
-@app.get("/analyzer", response_class=HTMLResponse)
+@app.get("/analyzer", include_in_schema=False)
 def analyzer_page():
-    with open("analyzer.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return RedirectResponse(url="https://match.mzstats.app/analyzer.html")
+
 
 
 @app.get("/status")
