@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import json
 import os
@@ -9,6 +10,21 @@ from app.services.mz_lookup import get_team_match_history, resolve_soccer_team
 from app.services.tactical_engine import run_analysis, run_heatmaps_v2
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://match.mzstats.app",
+        "https://www.match.mzstats.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:5500",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/reports", StaticFiles(directory="reports"), name="reports")
 
 LAST = []
@@ -47,7 +63,6 @@ def home():
 @app.get("/analyzer", include_in_schema=False)
 def analyzer_page():
     return RedirectResponse(url="https://match.mzstats.app/analyzer.html")
-
 
 
 @app.get("/status")
